@@ -27,7 +27,7 @@ jobs:
       - name: Run Backend Tests
         run: |
           cd backend
-          pytest tests/ --cov=. --cov-report=xml
+          PYTHONPATH=. pytest tests/ --cov=. --cov-report=xml
 
       # 2. Setup Frontend (Flutter) & Test
       - name: Setup Flutter
