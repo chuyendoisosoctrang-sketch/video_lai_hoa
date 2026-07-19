@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:universal_html/html.dart' as html;
 import 'dart:convert';
+import 'dart:async';
 
 void main() {
   runApp(const LaiHoaApp());
@@ -39,6 +41,11 @@ class _GeneratorPageState extends State<GeneratorPage> {
   final TextEditingController _licenseController = TextEditingController();
   bool _isLoading = false;
   String _message = '';
+  double _progress = 0.0;
+  Timer? _progressTimer;
+
+  // URL of the API. Defaults to localhost, but can be overridden by dart-define
+  static const String apiUrl = String.fromEnvironment('API_URL', defaultValue: 'http://localhost:8080');
 
   Future<void> _generateVideo() async {
     final topic = _topicController.text;
@@ -50,13 +57,22 @@ class _GeneratorPageState extends State<GeneratorPage> {
 
     setState(() {
       _isLoading = true;
-      _message = '';
+      _message = 'Đang gọi AI sinh kịch bản và giọng đọc...';
+      _progress = 0.0;
+    });
+
+    // Simulate progress since backend might take 15-30 seconds
+    _progressTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
+      setState(() {
+        if (_progress < 0.9) {
+          _progress += 0.02;
+        }
+      });
     });
 
     try {
-      // For local testing, we assume the backend runs on localhost:8080
       final response = await http.post(
-        Uri.parse('http://localhost:8080/generate-video'),
+        Uri.parse('$apiUrl/generate-video'),
         headers: {
           'Content-Type': 'application/json',
           'x-license-key': license,
@@ -64,17 +80,38 @@ class _GeneratorPageState extends State<GeneratorPage> {
         body: jsonEncode({'topic': topic, 'duration': 60}),
       );
 
+      _progressTimer?.cancel();
+      setState(() => _progress = 1.0);
+
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        setState(() => _message = data['message'] ?? 'Thành công!');
+        setState(() => _message = 'Tạo video thành công! Đang tải xuống...');
+        
+        // Trigger download
+        final blob = html.Blob([response.bodyBytes], 'video/mp4');
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        final anchor = html.AnchorElement(href: url)
+          ..setAttribute("download", "video_laihoa.mp4")
+          ..click();
+        html.Url.revokeObjectUrl(url);
+
       } else {
         setState(() => _message = 'Lỗi ${response.statusCode}: ${response.body}');
       }
     } catch (e) {
+      _progressTimer?.cancel();
       setState(() => _message = 'Lỗi kết nối: $e');
     } finally {
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _progressTimer?.cancel();
+      });
     }
+  }
+
+  @override
+  void dispose() {
+    _progressTimer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -123,15 +160,21 @@ class _GeneratorPageState extends State<GeneratorPage> {
                   const SizedBox(height: 24),
                   ElevatedButton.icon(
                     onPressed: _isLoading ? null : _generateVideo,
-                    icon: _isLoading 
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.video_call),
+                    icon: const Icon(Icons.video_call),
                     label: Text(_isLoading ? 'Đang xử lý...' : 'Tạo Video Mới'),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       textStyle: const TextStyle(fontSize: 18),
                     ),
                   ),
+                  
+                  if (_isLoading) ...[
+                    const SizedBox(height: 24),
+                    LinearProgressIndicator(value: _progress),
+                    const SizedBox(height: 8),
+                    Text('${(_progress * 100).toInt()}%', textAlign: TextAlign.center),
+                  ],
+
                   const SizedBox(height: 24),
                   if (_message.isNotEmpty)
                     Container(
