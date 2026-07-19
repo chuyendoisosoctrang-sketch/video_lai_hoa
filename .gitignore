@@ -1,0 +1,10 @@
+# Python
+backend/venv/
+backend/__pycache__/
+backend/.pytest_cache/
+*.pyc
+
+# Env
+.env
+
+# Flutter is already covered by frontend/.gitignore
